@@ -1,4 +1,4 @@
-import EventList from "./components/EventList";
+import StatsCard from "./components/StatsCard";
 
 export default function Home() {
   return (
@@ -13,7 +13,8 @@ export default function Home() {
       <h1>📊 Analytics Dashboard</h1>
       <p>Welcome to your analytics platform!</p>
       <p>Track events from your website in real-time.</p>
-      <EventList />
+
+      <StatsCard />
     </main>
   );
 }
