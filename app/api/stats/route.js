@@ -8,26 +8,26 @@ const pool = new Pool({
   },
 });
 
-// GET - Fetch statistics
+// GET - Fetch aggregated statistics
 export async function GET() {
   try {
     const client = await pool.connect();
+
     try {
       // Get total events count
       const totalResult = await client.query(
         "SELECT COUNT(*) as total FROM events"
       );
 
-      // Get daily events
+      // Get events grouped by date
       const dailyResult = await client.query(
         `SELECT DATE(created_at) as date, COUNT(*) as count 
          FROM events 
          GROUP BY DATE(created_at) 
-         ORDER BY date DESC 
-         LIMIT 30`
+         ORDER BY date DESC`
       );
 
-      // Get top events
+      // Get top events by count
       const topEventsResult = await client.query(
         `SELECT event_name, COUNT(*) as count 
          FROM events 
@@ -37,6 +37,7 @@ export async function GET() {
       );
 
       return NextResponse.json({
+        success: true,
         totalEvents: parseInt(totalResult.rows[0].total),
         dailyEvents: dailyResult.rows,
         topEvents: topEventsResult.rows,
@@ -47,7 +48,7 @@ export async function GET() {
   } catch (error) {
     console.error("Fetch error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch stats", details: error.message },
+      { error: "Failed to fetch events", details: error.message },
       { status: 500 }
     );
   }

@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { Pool } from "pg";
 
+/* ------------------ DATABASE ------------------ */
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is not defined");
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -8,12 +14,17 @@ const pool = new Pool({
   },
 });
 
-// Rate limiting
+/* ------------------ RATE LIMIT ------------------ */
+
 const MAX_REQUESTS_PER_MINUTE = 1000;
 const requestCounts = new Map();
 
 function getRateLimitKey(req) {
-  return req.headers.get("x-forwarded-for") || "unknown";
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0].trim(); // first IP only
+  }
+  return "unknown";
 }
 
 function checkRateLimit(key) {
@@ -22,23 +33,25 @@ function checkRateLimit(key) {
   const countKey = `${key}:${minute}`;
 
   const count = requestCounts.get(countKey) || 0;
-
-  if (count >= MAX_REQUESTS_PER_MINUTE) {
-    return false;
-  }
+  if (count >= MAX_REQUESTS_PER_MINUTE) return false;
 
   requestCounts.set(countKey, count + 1);
 
+  // cleanup old entries
   if (requestCounts.size > 10000) {
-    const cutoff = minute - 2;
-    for (const [k] of requestCounts.entries()) {
-      const m = parseInt(k.split(":"));
-      if (m < cutoff) requestCounts.delete(k);
+    const cutoffMinute = minute - 2;
+    for (const [k] of requestCounts) {
+      const entryMinute = Number(k.split(":")[1]);
+      if (entryMinute < cutoffMinute) {
+        requestCounts.delete(k);
+      }
     }
   }
 
   return true;
 }
+
+/* ------------------ VALIDATION ------------------ */
 
 function sanitizeInput(str) {
   if (typeof str !== "string") return str;
@@ -65,13 +78,18 @@ function validateEvent(eventName, properties) {
   return null;
 }
 
+/* ------------------ HANDLERS ------------------ */
+
 export async function POST(request) {
   try {
     const rateLimitKey = getRateLimitKey(request);
     if (!checkRateLimit(rateLimitKey)) {
       return NextResponse.json(
         { error: "Rate limit exceeded" },
-        { status: 429 }
+        {
+          status: 429,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
 
@@ -86,6 +104,7 @@ export async function POST(request) {
     }
 
     eventName = sanitizeInput(eventName);
+
     const validationError = validateEvent(eventName, properties);
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 });
@@ -95,7 +114,10 @@ export async function POST(request) {
 
     try {
       await client.query(
-        "INSERT INTO events (event_name, user_id, properties) VALUES ($1, $2, $3)",
+        `
+        INSERT INTO events (event_name, user_id, properties)
+        VALUES ($1, $2, $3)
+        `,
         [
           eventName,
           userId || "anonymous",
@@ -107,6 +129,7 @@ export async function POST(request) {
         { success: true, message: "Event tracked" },
         {
           headers: {
+            "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "POST, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type",

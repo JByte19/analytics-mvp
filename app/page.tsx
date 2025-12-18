@@ -1,20 +1,33 @@
-import StatsCard from "./components/StatsCard";
+"use client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 export default function Home() {
+  const router = useRouter();
+  const { data: session, status } = useSession();
+
+  useEffect(() => {
+    if (status === "loading") return; // Still loading
+
+    if (session) {
+      router.push("/dashboard");
+    } else {
+      router.push("/login");
+    }
+  }, [session, status, router]);
+
   return (
-    <main
+    <div
       style={{
-        padding: "24px",
-        fontFamily: "Arial",
-        maxWidth: "1200px",
-        margin: "0 auto",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        minHeight: "100vh", 
+
       }}
     >
-      <h1>📊 Analytics Dashboard</h1>
-      <p>Welcome to your analytics platform!</p>
-      <p>Track events from your website in real-time.</p>
-
-      <StatsCard />
-    </main>
+      <p>Redirecting...</p>
+    </div>
   );
 }
